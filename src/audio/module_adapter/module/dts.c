@@ -34,6 +34,21 @@ static void *dts_effect_allocate_codec_memory(void *mod_void, unsigned int lengt
 	return pMem;
 }
 
+static void dts_effect_free_codec_memory(void *mod_void, void *pMem)
+{
+	struct processing_module *mod = mod_void;
+	struct comp_dev *dev = mod->dev;
+
+	comp_dbg(dev, "dts_effect_free_codec_memory() start");
+
+	int ret = module_free_memory(mod, pMem);
+
+	if (ret)
+		comp_err(dev, "dts_effect_free_codec_memory() module_free_memory failed %d", ret);
+
+	comp_dbg(dev, "dts_effect_free_codec_memory() done");
+}
+
 static int dts_effect_convert_sof_interface_result(struct comp_dev *dev,
 	DtsSofInterfaceResult dts_result)
 {
@@ -105,8 +120,6 @@ static int dts_effect_populate_buffer_configuration(struct comp_dev *dev,
 	buffer_config->sampleRate = stream->rate;
 	buffer_config->numChannels = stream->channels;
 	buffer_config->periodInFrames = dev->frames;
-	/* totalBufferLengthInBytes will be populated in dtsSofInterfacePrepare */
-	buffer_config->totalBufferLengthInBytes = 0;
 
 	comp_dbg(dev, "dts_effect_populate_buffer_configuration() done");
 
@@ -125,7 +138,7 @@ static int dts_codec_init(struct processing_module *mod)
 	comp_dbg(dev, "dts_codec_init() start");
 
 	dts_result = dtsSofInterfaceInit((DtsSofInterfaceInst **)&(codec->private),
-		dts_effect_allocate_codec_memory, mod);
+		dts_effect_allocate_codec_memory, dts_effect_free_codec_memory, mod);
 	ret = dts_effect_convert_sof_interface_result(dev, dts_result);
 
 	if (ret)
@@ -324,6 +337,9 @@ static int dts_codec_apply_config(struct processing_module *mod)
 			/* Calculate size of param->data */
 			param_data_size = param->size - param_header_size;
 
+			comp_dbg(dev, "dts_codec_apply_config() id %d size %d",
+					param->id, param_data_size);
+
 			if (param_data_size) {
 				dts_result = dtsSofInterfaceApplyConfig(codec->private, param->id,
 					param->data, param_data_size);
@@ -404,6 +420,10 @@ dts_codec_set_configuration(struct processing_module *mod, uint32_t config_id,
 	/* return if more fragments are expected or if the module is not prepared */
 	if ((pos != MODULE_CFG_FRAGMENT_LAST && pos != MODULE_CFG_FRAGMENT_SINGLE) ||
 	    md->state < MODULE_INITIALIZED)
+		return 0;
+
+	/* return if configuration size is 0 */
+	if (!md->new_cfg_size)
 		return 0;
 
 	/* whole configuration received, apply it now */

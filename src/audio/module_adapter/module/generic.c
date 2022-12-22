@@ -277,11 +277,13 @@ int module_reset(struct processing_module *mod)
 	md->cfg.avail = false;
 	md->cfg.size = 0;
 	rfree(md->cfg.data);
+	md->cfg.data = NULL;
 
-	/* module resets itself to the initial condition after prepare()
-	 * so let's change its state to reflect that.
+	/*
+	 * reset the state to allow the module's prepare callback to be invoked again for the
+	 * subsequent triggers
 	 */
-	md->state = MODULE_IDLE;
+	md->state = MODULE_INITIALIZED;
 
 	return 0;
 }
@@ -317,9 +319,11 @@ int module_free(struct processing_module *mod)
 	md->cfg.avail = false;
 	md->cfg.size = 0;
 	rfree(md->cfg.data);
-	if (md->runtime_params)
+	md->cfg.data = NULL;
+	if (md->runtime_params) {
 		rfree(md->runtime_params);
-
+		md->runtime_params = NULL;
+	}
 	md->state = MODULE_DISABLED;
 
 	return ret;
