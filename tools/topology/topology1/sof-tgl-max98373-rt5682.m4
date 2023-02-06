@@ -38,6 +38,8 @@ DEBUG_START
 # PCM99 <---- volume <---- DMIC01 (dmic 48k capture)
 # PCM100 <---- kpb <---- DMIC16K (dmic 16k capture)
 
+# Run Speakers pipeline on core#1 by default for low power considering
+ifdef(`SPK_PLAYBACK_CORE', `', `define(`SPK_PLAYBACK_CORE', `1')')
 
 ifdef(`AMP_SSP',`',`fatal_error(note: Define AMP_SSP for speaker amp SSP Index)')
 # Smart amplifier related
@@ -50,6 +52,8 @@ define(`SMART_SSP_NAME', concat(concat(`SSP', AMP_SSP),`-Codec'))
 define(`SMART_BE_ID', 7)
 #define SSP mclk
 define(`SSP_MCLK', 24576000)
+# Run Smart Amp pipeline on core#1 by default for low power considering
+define(`SMART_AMP_CORE', SPK_PLAYBACK_CORE)
 # Playback related
 define(`SMART_PB_PPL_ID', 1)
 define(`SMART_PB_CH_NUM', 2)
