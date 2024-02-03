@@ -110,6 +110,8 @@ ifdef(`GOOGLE_RTC_AUDIO_PROCESSING',
 	`MUXDEMUX_CONFIG(demux_priv_1, 2, LIST_NONEWLINE(`', `matrix1,', `matrix2'))')'
 )')
 
+
+ifdef(`ECHO_REF_DEMUX', `MUXDEMUX_CONFIG(demux_priv_9, 3, LIST_NONEWLINE(`', `matrix1,', `matrix2,', `matrix4'))', `')
 #
 # Define the pipelines
 #
@@ -179,7 +181,7 @@ ifdef(`GOOGLE_RTC_AUDIO_PROCESSING',
 )
 
 # Run Speakers pipeline on core#1 by default for low power considering
-ifdef(`GOOGLE_RTC_AUDIO_PROCESSING', `define(`SPK_PLAYBACK_CORE', DMIC_PIPELINE_48k_CORE_ID)',
+ifdef(`GOOGLE_RTC_AUDIO_PROCESSING', ifdef(`ECHO_REF_DEMUX', `define(`SPK_PLAYBACK_CORE', 0)', `define(`SPK_PLAYBACK_CORE', DMIC_PIPELINE_48k_CORE_ID)'),
         `ifdef(`SPK_PLAYBACK_CORE', `', `define(`SPK_PLAYBACK_CORE', `1')')')
 
 # Google RTC Audio processing processes 10ms at a time. It needs to have time to process it.
@@ -225,7 +227,7 @@ PIPELINE_PCM_ADD(
 		    ifdef(`DRC_EQ', sof/pipe-drc-eq-volume-demux-playback.m4,
 			  sof/pipe-volume-demux-playback.m4))),
 	1, 0, ifdef(`4CH_PASSTHROUGH', `4', `2'), s32le,
-	SPK_MIC_PERIOD_US, 0, SPK_PLAYBACK_CORE,
+	ifdef(`ECHO_REF_DEMUX',1000, SPK_MIC_PERIOD_US), 0, SPK_PLAYBACK_CORE,
 	48000, 48000, 48000)
 undefine(`ENDPOINT_NAME')')
 
@@ -292,22 +294,29 @@ ifdef(`NO_AMP',`',`
 DAI_ADD(sof/pipe-dai-playback.m4,
 	1, SSP, SPK_SSP_INDEX, SPK_SSP_NAME,
 	PIPELINE_SOURCE_1, 2, FMT,
-	SPK_MIC_PERIOD_US, 0, SPK_PLAYBACK_CORE, SCHEDULE_TIME_DOMAIN_TIMER)
+	ifdef(`ECHO_REF_DEMUX', 1000, SPK_MIC_PERIOD_US), 0, SPK_PLAYBACK_CORE, SCHEDULE_TIME_DOMAIN_TIMER)
 
 ifelse(CODEC, `MAX98390', `
 # Low Latency capture pipeline 9 on PCM 6 using max 4 channels of s32le.
 # Schedule 48 frames per 1000us deadline on core 0 with priority 0
-PIPELINE_PCM_ADD(sof/pipe-passthrough-capture.m4,
+# PIPELINE_PCM_ADD(sof/pipe-passthrough-capture.m4,
+ifdef(`ECHO_REF_DEMUX',
+      `PIPELINE_PCM_ADD(sof/pipe-demux-capture.m4,
+	9, 6, 4, s32le,
+	DMIC_48k_PERIOD, 0, DMIC_PIPELINE_48k_CORE_ID,
+	48000, 48000, 48000)',
+	`PIPELINE_PCM_ADD(sof/pipe-passthrough-capture.m4,
 	9, 6, 4, s32le,
 	SPK_MIC_PERIOD_US, 0, SPK_PLAYBACK_CORE,
-	48000, 48000, 48000)
+	48000, 48000, 48000)')
 
 # capture DAI is SSP1 using 2 periods
 # Buffers use FMT format, with 48 frame per 1000us on core 0 with priority 0
 DAI_ADD(sof/pipe-dai-capture.m4,
 	9, SSP, SPK_SSP_INDEX, SPK_SSP_NAME,
 	PIPELINE_SINK_9, 2, FMT,
-	SPK_MIC_PERIOD_US, 0, SPK_PLAYBACK_CORE, SCHEDULE_TIME_DOMAIN_TIMER)
+	ifdef(`ECHO_REF_DEMUX', DMIC_48k_PERIOD, SPK_MIC_PERIOD_US), 0, ifdef(`ECHO_REF_DEMUX', DMIC_PIPELINE_48k_CORE_ID, SPK_PLAYBACK_CORE),
+	SCHEDULE_TIME_DOMAIN_TIMER)
 ', CODEC, `CS35L41', `
 # Low Latency capture pipeline 9 on PCM 6 using max 4 channels of s32le.
 # Schedule 48 frames per 1000us deadline on core 0 with priority 0
@@ -321,7 +330,29 @@ PIPELINE_PCM_ADD(sof/pipe-passthrough-capture.m4,
 DAI_ADD(sof/pipe-dai-capture.m4,
 	9, SSP, SPK_SSP_INDEX, SPK_SSP_NAME,
 	PIPELINE_SINK_9, 2, FMT,
-	SPK_MIC_PERIOD_US, 0, SPK_PLAYBACK_CORE, SCHEDULE_TIME_DOMAIN_TIMER)',
+	SPK_MIC_PERIOD_US, 0, SPK_PLAYBACK_CORE, SCHEDULE_TIME_DOMAIN_TIMER)
+',CODEC, `MAX98360A', `
+# Low Latency capture pipeline 9 on PCM 6 using max 4 channels of s32le.
+# Schedule 48 frames per 1000us deadline on core 0 with priority 0
+# PIPELINE_PCM_ADD(sof/pipe-passthrough-capture.m4,
+ifdef(`ECHO_REF_DEMUX',
+      `PIPELINE_PCM_ADD(sof/pipe-demux-capture.m4,
+	9, 6, 4, s32le,
+	DMIC_48k_PERIOD, 0, DMIC_PIPELINE_48k_CORE_ID,
+	48000, 48000, 48000)',
+	`PIPELINE_PCM_ADD(sof/pipe-passthrough-capture.m4,
+	9, 6, 4, s32le,
+	SPK_MIC_PERIOD_US, 0, SPK_PLAYBACK_CORE,
+	48000, 48000, 48000)')
+
+# capture DAI is SSP1 using 2 periods
+# Buffers use FMT format, with 48 frame per 1000us on core 0 with priority 0
+DAI_ADD(sof/pipe-dai-capture.m4,
+	9, SSP, SPK_SSP_INDEX, SPK_SSP_NAME,
+	PIPELINE_SINK_9, 2, FMT,
+	ifdef(`ECHO_REF_DEMUX', DMIC_48k_PERIOD, SPK_MIC_PERIOD_US), 0, ifdef(`ECHO_REF_DEMUX', DMIC_PIPELINE_48k_CORE_ID, SPK_PLAYBACK_CORE),
+	SCHEDULE_TIME_DOMAIN_TIMER)',
+
 `
 ifdef(`2CH_2WAY',`# No echo reference for 2-way speakers',
 `
@@ -333,14 +364,24 @@ DAI_ADD(sof/pipe-echo-ref-dai-capture.m4,
 	SPK_MIC_PERIOD_US, 0, SPK_PLAYBACK_CORE, SCHEDULE_TIME_DOMAIN_TIMER)
 
 `# Capture pipeline 9 from demux on PCM 6 using max 'ifdef(`4CH_PASSTHROUGH', `4', `2')` channels of s32le.'
-PIPELINE_PCM_ADD(sof/pipe-passthrough-capture-sched.m4,
+	PIPELINE_PCM_ADD(sof/pipe-passthrough-capture-sched.m4,
 	9, 6, ifdef(`4CH_PASSTHROUGH', `4', `2'), s32le,
 	SPK_MIC_PERIOD_US, 1, SPK_PLAYBACK_CORE,
 	48000, 48000, 48000,
 	SCHEDULE_TIME_DOMAIN_TIMER,
 	PIPELINE_PLAYBACK_SCHED_COMP_1)
 
+# Connect echo ref demux to capture DAI
 # Connect demux to capture
+ifdef(`ECHO_REF_DEMUX',`
+SectionGraph."PIPE_CAP" {
+	index "0"
+
+	lines [
+		# mux to capture
+		dapm(PIPELINE_SINK_9, SPK_REF_DAI_NAME)
+	]
+}',`
 SectionGraph."PIPE_CAP" {
 	index "0"
 
@@ -354,11 +395,12 @@ SectionGraph."PIPE_CAP" {
 SectionGraph."PIPE_CAP_VIRT" {
 	index "9"
 
-	lines [
+ 	lines [
 		# mux to capture
 		dapm(ECHO REF 9, SPK_REF_DAI_NAME)
 	]
-}
+}')
+
 ')')')
 
 dnl if using Google AEC
@@ -368,7 +410,7 @@ ifdef(`GOOGLE_RTC_AUDIO_PROCESSING',
 `        index "0"'
 `        lines ['
 `                # mux to capture'
-`                dapm(N_AEC_REF_BUF, PIPELINE_DEMUX_1)'
+`    		 ifdef(`ECHO_REF_DEMUX',` dapm(N_AEC_REF_BUF, PIPELINE_DEMUX_9)', `dapm(N_AEC_REF_BUF, PIPELINE_DEMUX_9)')'
 `       ]'
 `}'
 dnl else
@@ -456,13 +498,13 @@ ifelse(
 		SSP_CLOCK(bclk, 3072000, codec_slave),
 		SSP_CLOCK(fsync, 48000, codec_slave),
 		SSP_TDM(2, 32, 3, 3),
-		SSP_CONFIG_DATA(SSP, SPK_SSP_INDEX, 32)))',
+		SSP_CONFIG_DATA(SSP, SPK_SSP_INDEX, 32, 0, SSP_QUIRK_LBM)))',
 	CODEC, `MAX98360A_TDM', `
 	SSP_CONFIG(DSP_A, SSP_CLOCK(mclk, MCLK_RATE, codec_mclk_in),
 		SSP_CLOCK(bclk, 12288000, codec_slave),
 		SSP_CLOCK(fsync, 48000, codec_slave),
 		SSP_TDM(8, 32, 15, 15),
-		SSP_CONFIG_DATA(SSP, SPK_SSP_INDEX, 32)))',
+		SSP_CONFIG_DATA(SSP, SPK_SSP_INDEX, 32,0, SSP_QUIRK_LBM)))',
 	CODEC, `RT1011', `
 	SSP_CONFIG(DSP_A, SSP_CLOCK(mclk, MCLK_RATE, codec_mclk_in),
 		SSP_CLOCK(bclk, 4800000, codec_slave),
@@ -474,7 +516,7 @@ ifelse(
 		SSP_CLOCK(bclk, 6144000, codec_slave),
 		SSP_CLOCK(fsync, 48000, codec_slave),
 		SSP_TDM(4, 32, 3, 15),
-		SSP_CONFIG_DATA(SSP, SPK_SSP_INDEX, 32)))',
+		SSP_CONFIG_DATA(SSP, SPK_SSP_INDEX, 32, 0, SSP_QUIRK_LBM)))',
 	CODEC, `RT1019', `
 	SSP_CONFIG(I2S, SSP_CLOCK(mclk, MCLK_RATE, codec_mclk_in),
                 SSP_CLOCK(bclk, 3072000, codec_slave),
